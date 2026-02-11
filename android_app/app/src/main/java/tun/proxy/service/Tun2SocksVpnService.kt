@@ -16,6 +16,7 @@ import tun.proxy.MainActivity
 import tun.proxy.R
 import tun.utils.Utils
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class Tun2SocksVpnService : VpnService() {
 
@@ -24,15 +25,20 @@ class Tun2SocksVpnService : VpnService() {
     private var vpnThread: Thread? = null
     private var utils: Utils? = null
     private val stopSignal = CountDownLatch(1)
+    private val isStopping = AtomicBoolean(false)
 
     companion object {
         const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
         private const val PROXY = "http://127.0.0.1:2323"
-
+        
         @Volatile
         private var RUNNING = false
-
+        
         fun isRunning(): Boolean = RUNNING
+        
+        fun setRunning(running: Boolean) {
+            RUNNING = running
+        }
     }
 
     override fun onCreate() {
@@ -43,26 +49,35 @@ class Tun2SocksVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SERVICE) {
+            Log.d(TAG, "Stop command received")
             stopVpn()
             return START_NOT_STICKY
         }
 
-        if (RUNNING) return START_STICKY
+        if (RUNNING) {
+            Log.d(TAG, "VPN already running")
+            return START_STICKY
+        }
 
         startForeground(1, buildNotification())
 
         vpnThread = Thread {
             try {
                 RUNNING = true
+                isStopping.set(false)
                 utils?.setVpnStatus(true)
                 startVpn()
             } catch (e: Exception) {
                 Log.e(TAG, "VPN error", e)
                 RUNNING = false
+            } finally {
+                RUNNING = false
+                utils?.setVpnStatus(false)
             }
         }
+        
         vpnThread!!.start()
-
+        
         return START_STICKY
     }
 
@@ -76,11 +91,12 @@ class Tun2SocksVpnService : VpnService() {
         // السماح فقط لتطبيقات Facebook
         try { builder.addAllowedApplication("com.facebook.katana") } catch (_: Exception) {}
         try { builder.addAllowedApplication("com.facebook.lite") } catch (_: Exception) {}
-
+        
         // منع الخدمة من العمل على التطبيق نفسه لتفادي loop
         try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
         vpnInterface = builder.establish()
+        
         if (vpnInterface == null) {
             Log.e(TAG, "Failed to establish VPN interface")
             RUNNING = false
@@ -101,25 +117,76 @@ class Tun2SocksVpnService : VpnService() {
 
         Engine.insert(key)
         Engine.start()
+        
         Log.d(TAG, "Engine started with proxy: $PROXY")
 
-        stopSignal.await()
+        // انتظار إشارة الإيقاف
+        try {
+            stopSignal.await()
+        } catch (e: InterruptedException) {
+            Log.d(TAG, "VPN thread interrupted")
+        }
 
-        try { Engine.stop() } catch (_: Exception) {}
-        vpnInterface?.close()
-        vpnInterface = null
+        // إيقاف المحرك
+        try {
+            Engine.stop()
+            Log.d(TAG, "Engine stopped")
+        } catch (_: Exception) {}
+
+        // إغلاق واجهة VPN
+        try {
+            vpnInterface?.close()
+            vpnInterface = null
+        } catch (_: Exception) {}
+
         RUNNING = false
-        Log.d(TAG, "VPN stopped")
+        Log.d(TAG, "VPN stopped completely")
     }
 
     private fun stopVpn() {
-        stopSignal.countDown()
-        try { vpnThread?.interrupt() } catch (_: Exception) {}
-        try { Engine.stop() } catch (_: Exception) {}
+        Log.d(TAG, "stopVpn called")
+        
+        if (isStopping.getAndSet(true)) {
+            Log.d(TAG, "Already stopping")
+            return
+        }
+
+        try {
+            // إرسال إشارة الإيقاف
+            stopSignal.countDown()
+            
+            // مقاطعة الموضوع إذا كان يعمل
+            vpnThread?.interrupt()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping vpn thread: ${e.message}")
+        }
+
+        try {
+            // إيقاف المحرك
+            Engine.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping engine: ${e.message}")
+        }
+
         RUNNING = false
+        isStopping.set(false)
+        
         utils?.setVpnStatus(false)
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping foreground: ${e.message}")
+        }
+        
+        try {
+            stopSelf()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping service: ${e.message}")
+        }
+        
+        Log.d(TAG, "Stop VPN completed")
     }
 
     override fun onDestroy() {
