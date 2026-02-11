@@ -1,72 +1,170 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="tun.proxy">
+package tun.proxy.service
 
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:name="android.permission.WRITE_SETTINGS"
-        tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.VPN_SERVICE"/>
+import android.app.*
+import android.content.Intent
+import android.graphics.Color
+import android.net.VpnService
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import engine.Engine
+import engine.Key
+import tun.proxy.BuildConfig
+import tun.proxy.MainActivity
+import tun.proxy.R
+import tun.utils.Utils
+import java.util.concurrent.CountDownLatch
 
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
-        </intent>
-    </queries>
+class Tun2SocksVpnService : VpnService() {
 
-    <application
-        android:name=".MyApplication"
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher"
-        android:supportsRtl="true"
-        android:theme="@style/AppTheme">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:hardwareAccelerated="true"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
+    private val TAG = "Tun2SocksVPN"
+    private var vpnInterface: ParcelFileDescriptor? = null
+    private var vpnThread: Thread? = null
+    private var utils: Utils? = null
+    private val stopSignal = CountDownLatch(1)
 
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name=".SettingsActivity"
-            android:label="@string/title_activity_settings"
-            android:parentActivityName=".MainActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="tun.proxy.MainActivity" />
-        </activity>
+    companion object {
+        const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
 
-        <service
-            android:name=".service.Tun2SocksVpnService"
-            android:exported="true"
-            android:enabled="true"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:process=":background"
-            android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn" />
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-            <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="true" />
-        </service>
+        // tun2socks يتطلب بروكسي SOCKS5
+        private const val PROXY = "socks5://127.0.0.1:2323"
 
-    </application>
+        @Volatile
+        private var RUNNING = false
 
-</manifest>
+        fun isRunning(): Boolean = RUNNING
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        utils = Utils(this)
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
+        // لو تم استدعاء STOP
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            stopVpn()
+            return START_NOT_STICKY
+        }
+
+        // لو الـ VPN يعمل بالفعل
+        if (RUNNING) {
+            Log.d(TAG, "VPN already running")
+            return START_STICKY
+        }
+
+        startForeground(1, buildNotification())
+
+        // بدء الـ VPN في Thread منفصل
+        vpnThread = Thread {
+            try {
+                RUNNING = true
+                utils?.setVpnStatus(true)
+                startVpn()
+            } catch (e: Exception) {
+                Log.e(TAG, "VPN encountered error", e)
+                RUNNING = false
+            }
+        }
+        vpnThread!!.start()
+
+        return START_STICKY
+    }
+
+    private fun startVpn() {
+
+        Log.d(TAG, "Starting VPN with proxy $PROXY")
+
+        val builder = Builder()
+            .setSession(getString(R.string.app_name))
+            .setMtu(1500)
+            .addAddress("10.10.10.1", 32)
+            .addRoute("0.0.0.0", 0)
+
+        // تمكين دعم التطبيقات المحددة فقط
+        try { builder.addAllowedApplication("com.facebook.katana") } catch (_: Exception) {}
+        try { builder.addAllowedApplication("com.facebook.lite") } catch (_: Exception) {}
+
+        // منع عمل الخدمة على نفسها لتجنب Loop
+        try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
+
+        vpnInterface = builder.establish()
+        if (vpnInterface == null) {
+            Log.e(TAG, "Failed to establish VPN interface")
+            RUNNING = false
+            return
+        }
+
+        val key = Key().apply {
+            mark = 0
+            mtu = 1500
+            device = "fd://${vpnInterface!!.fd}"
+            logLevel = "info"
+            proxy = PROXY
+            restAPI = ""
+            tcpSendBufferSize = ""
+            tcpReceiveBufferSize = ""
+            tcpModerateReceiveBuffer = false
+        }
+
+        Engine.insert(key)
+        Engine.start()
+
+        Log.d(TAG, "Engine started")
+
+        // الانتظار حتى يتم إيقاف الخدمة
+        stopSignal.await()
+
+        try { Engine.stop() } catch (_: Exception) {}
+        vpnInterface?.close()
+        vpnInterface = null
+        RUNNING = false
+        Log.d(TAG, "VPN stopped")
+    }
+
+    private fun stopVpn() {
+        Log.d(TAG, "Stopping VPN")
+        stopSignal.countDown()
+        try { vpnThread?.interrupt() } catch (_: Exception) {}
+        try { Engine.stop() } catch (_: Exception) {}
+        RUNNING = false
+        utils?.setVpnStatus(false)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        stopVpn()
+        super.onDestroy()
+    }
+
+    private fun createNotificationChannel() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "vpn",
+                "VPN Service",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            channel.lightColor = Color.BLUE
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val pi = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, "vpn")
+            .setContentTitle("ProxyMe VPN")
+            .setContentText("Running with proxy $PROXY")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .build()
+    }
+}
