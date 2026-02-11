@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
     private val REQUEST_NOTIFICATION_PERMISSION = 1231
 
     // ✅ البروكسي المحلي socks5
-    private val PROXY = "socks5://127.0.0.1:2323"
+    private val PROXY = "http://127.0.0.1:2323"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
