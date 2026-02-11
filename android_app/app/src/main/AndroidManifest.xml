@@ -3,25 +3,32 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="tun.proxy">
 
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
+    <!-- Network -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- VPN -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:name="android.permission.WRITE_SETTINGS"
-        tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.VPN_SERVICE"/>
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"/>
+
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <!-- Package query (إذا عندك فلترة تطبيقات) -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission"/>
+
+    <!-- ❌ أزلت WRITE_SETTINGS لأنه يسبب رفض في المتجر وغير مطلوب للـ VPN -->
 
     <queries>
         <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
         </intent>
     </queries>
 
@@ -32,39 +39,54 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+
+        <!-- Main -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- Settings -->
         <activity
             android:name=".SettingsActivity"
             android:label="@string/title_activity_settings"
-            android:parentActivityName=".MainActivity">
+            android:parentActivityName=".MainActivity"
+            android:exported="false">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value="tun.proxy.MainActivity" />
+                android:value="tun.proxy.MainActivity"/>
         </activity>
 
+        <!-- ✅ VPN Service -->
         <service
             android:name=".service.Tun2SocksVpnService"
-            android:exported="true"
             android:enabled="true"
+            android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:process=":background"
+            android:process=":vpn"
             android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn" />
+
+            <!-- required for Android 14+ -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn"/>
+
             <intent-filter>
-                <action android:name="android.net.VpnService" />
+                <action android:name="android.net.VpnService"/>
             </intent-filter>
-            <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="true" />
+
+            <!-- Always-on support -->
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="true"/>
         </service>
 
     </application>
