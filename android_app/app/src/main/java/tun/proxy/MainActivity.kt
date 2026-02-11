@@ -28,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private var utils: Utils? = null
     private var intentVPNService: Intent? = null
     private var chainProxy: ChainProxy? = null
-
     private val TAG = "MainActivity"
     private val VPN_REQUEST_CODE = 100
     private val REQUEST_NOTIFICATION_PERMISSION = 1231
@@ -37,17 +36,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        
+        val toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
-
+        
         btnStartStop = findViewById(R.id.start)
         hostEditText = findViewById(R.id.host)
-
+        
         utils = Utils(this)
+        
         intentVPNService = Intent(this, Tun2SocksVpnService::class.java)
+        
         chainProxy = ChainProxy()
-
+        
         btnStartStop?.setOnClickListener {
             if (Tun2SocksVpnService.isRunning()) {
                 stopAll()
@@ -55,7 +56,7 @@ class MainActivity : AppCompatActivity() {
                 startAll()
             }
         }
-
+        
         updateButton()
     }
 
@@ -68,20 +69,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopAll() {
         Log.d(TAG, "Stopping VPN and ChainProxy")
+        
+        // إيقاف VPN أولاً
         stopVpn()
+        
+        // إيقاف ChainProxy
         chainProxy?.stop()
+        
         updateButton()
     }
 
     private fun updateButton() {
         val running = Tun2SocksVpnService.isRunning()
-        btnStartStop?.text = if (running) "Stop VPN+Proxy" else "Start VPN+Proxy"
+        
+        if (running) {
+            btnStartStop?.text = "STOP VPN+PROXY"
+            btnStartStop?.setBackgroundColor(0xFFFF0000.toInt()) // أحمر للإيقاف
+        } else {
+            btnStartStop?.text = "START VPN+PROXY"
+            btnStartStop?.setBackgroundColor(0xFF4CAF50.toInt()) // أخضر للبدء
+        }
+        
         hostEditText?.isEnabled = !running
     }
 
     private fun startVpn(proxy: String) {
         Log.d(TAG, "startVpn: $proxy")
-
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -91,10 +105,11 @@ class MainActivity : AppCompatActivity() {
                 REQUEST_NOTIFICATION_PERMISSION
             )
         }
-
+        
         intentVPNService?.putExtra("data", proxy)
-
+        
         val intent = VpnService.prepare(this)
+        
         if (intent != null) {
             startActivityForResult(intent, VPN_REQUEST_CODE)
         } else {
@@ -107,16 +122,23 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(this, Tun2SocksVpnService::class.java)
             intent.action = ACTION_STOP_SERVICE
             startService(intent)
+            
+            // انتظار قصير لإعطاء الوقت للإيقاف
+            Thread.sleep(500)
+            
         } catch (e: Exception) {
             e.printStackTrace()
+            Log.e(TAG, "Error stopping VPN: ${e.message}")
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        
         if (requestCode == VPN_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             startService(intentVPNService)
         }
+        
         updateButton()
     }
 
@@ -126,6 +148,7 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
         if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Notification permission granted", Toast.LENGTH_SHORT).show()
