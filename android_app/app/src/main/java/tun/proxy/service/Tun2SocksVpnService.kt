@@ -1,6 +1,7 @@
 package tun.proxy.service
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.VpnService
@@ -26,7 +27,7 @@ class Tun2SocksVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
-        private const val PROXY = "http://127.0.0.1:2323"
+        private const val PROXY = "socks5://127.0.0.1:2323"
 
         @Volatile
         private var RUNNING = false
@@ -41,16 +42,12 @@ class Tun2SocksVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-
         if (intent?.action == ACTION_STOP_SERVICE) {
             stopVpn()
             return START_NOT_STICKY
         }
 
-        if (RUNNING) {
-            Log.d(TAG, "VPN already running")
-            return START_STICKY
-        }
+        if (RUNNING) return START_STICKY
 
         startForeground(1, buildNotification())
 
@@ -70,8 +67,6 @@ class Tun2SocksVpnService : VpnService() {
     }
 
     private fun startVpn() {
-        Log.d(TAG, "Starting VPN with proxy $PROXY")
-
         val builder = Builder()
             .setSession(getString(R.string.app_name))
             .setMtu(1500)
@@ -106,7 +101,7 @@ class Tun2SocksVpnService : VpnService() {
 
         Engine.insert(key)
         Engine.start()
-        Log.d(TAG, "Engine started")
+        Log.d(TAG, "Engine started with proxy: $PROXY")
 
         stopSignal.await()
 
@@ -118,7 +113,6 @@ class Tun2SocksVpnService : VpnService() {
     }
 
     private fun stopVpn() {
-        Log.d(TAG, "Stopping VPN")
         stopSignal.countDown()
         try { vpnThread?.interrupt() } catch (_: Exception) {}
         try { Engine.stop() } catch (_: Exception) {}
