@@ -27,7 +27,7 @@ class Tun2SocksVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
-        private const val PROXY = "socks5://127.0.0.1:2323"
+        private const val PROXY = "http://127.0.0.1:2323"
 
         @Volatile
         private var RUNNING = false
