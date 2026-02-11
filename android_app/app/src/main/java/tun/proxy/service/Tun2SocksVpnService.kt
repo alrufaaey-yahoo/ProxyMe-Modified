@@ -19,7 +19,7 @@ import java.util.concurrent.CountDownLatch
 
 class Tun2SocksVpnService : VpnService() {
 
-    private val TAG = "VPN"
+    private val TAG = "Tun2SocksVPN"
     private var vpnInterface: ParcelFileDescriptor? = null
     private var vpnThread: Thread? = null
     private var utils: Utils? = null
@@ -27,7 +27,14 @@ class Tun2SocksVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
+
+        // ✅ tun2socks يحتاج SOCKS
         private const val PROXY = "http://127.0.0.1:2323"
+
+        @Volatile
+        private var RUNNING = false
+
+        fun isRunning(): Boolean = RUNNING
     }
 
     override fun onCreate() {
@@ -43,14 +50,21 @@ class Tun2SocksVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
+        if (RUNNING) {
+            Log.d(TAG, "VPN already running")
+            return START_STICKY
+        }
+
         startForeground(1, buildNotification())
 
         vpnThread = Thread {
             try {
+                RUNNING = true
                 utils?.setVpnStatus(true)
                 startVpn()
             } catch (e: Exception) {
                 Log.e(TAG, "VPN crash", e)
+                RUNNING = false
             }
         }
 
@@ -60,18 +74,20 @@ class Tun2SocksVpnService : VpnService() {
 
     private fun startVpn() {
 
+        Log.d(TAG, "Starting VPN → $PROXY")
+
         val builder = Builder()
-            .setSession("ProxyMe")
+            .setSession(getString(R.string.app_name))
             .setMtu(1500)
             .addAddress("10.10.0.1", 32)
             .addRoute("0.0.0.0", 0)
 
-        // ✅ Facebook only (both variants)
+        // ✅ Facebook only
         try { builder.addAllowedApplication("com.facebook.katana") } catch (_: Exception) {}
         try { builder.addAllowedApplication("com.facebook.lite") } catch (_: Exception) {}
 
-        // prevent loop
-        builder.addDisallowedApplication(packageName)
+        // منع loop
+        try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
         vpnInterface = builder.establish()
             ?: throw IllegalStateException("VPN establish failed")
@@ -81,27 +97,39 @@ class Tun2SocksVpnService : VpnService() {
             mtu = 1500
             device = "fd://${vpnInterface!!.fd}"
             logLevel = "info"
-            proxy = PROXY   // ✅ SOCKS — مهم
+            proxy = PROXY
+            restAPI = ""
+            tcpSendBufferSize = ""
+            tcpReceiveBufferSize = ""
+            tcpModerateReceiveBuffer = false
         }
 
         Engine.insert(key)
         Engine.start()
 
-        Log.d(TAG, "Engine started → $PROXY")
+        Log.d(TAG, "Engine started")
 
         stopSignal.await()
 
-        Engine.stop()
+        try { Engine.stop() } catch (_: Exception) {}
         vpnInterface?.close()
+        vpnInterface = null
+        RUNNING = false
+
+        Log.d(TAG, "VPN stopped")
     }
 
     private fun stopVpn() {
+        Log.d(TAG, "Stopping VPN")
         try {
             stopSignal.countDown()
             vpnThread?.interrupt()
             Engine.stop()
-            utils?.setVpnStatus(false)
         } catch (_: Exception) {}
+        RUNNING = false
+        utils?.setVpnStatus(false)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -113,7 +141,7 @@ class Tun2SocksVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= 26) {
             val ch = NotificationChannel(
                 "vpn",
-                "VPN",
+                "VPN Service",
                 NotificationManager.IMPORTANCE_LOW
             )
             ch.lightColor = Color.BLUE
@@ -124,16 +152,18 @@ class Tun2SocksVpnService : VpnService() {
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
-            this, 0,
+            this,
+            0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(this, "vpn")
             .setContentTitle("ProxyMe VPN")
-            .setContentText("Facebook only via local proxy")
+            .setContentText("Facebook traffic only via local proxy")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pi)
+            .setOngoing(true)
             .build()
     }
 }
