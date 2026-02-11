@@ -23,7 +23,7 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission"/>
 
-    <!-- ❌ أزلت WRITE_SETTINGS لأنه يسبب رفض في المتجر وغير مطلوب للـ VPN -->
+    <!-- ❌ أزلنا WRITE_SETTINGS لأنه غير مطلوب -->
 
     <queries>
         <intent>
@@ -65,7 +65,7 @@
                 android:value="tun.proxy.MainActivity"/>
         </activity>
 
-        <!-- ✅ VPN Service -->
+        <!-- ✅ Tun2Socks VPN Service -->
         <service
             android:name=".service.Tun2SocksVpnService"
             android:enabled="true"
@@ -74,7 +74,7 @@
             android:process=":vpn"
             android:foregroundServiceType="specialUse">
 
-            <!-- required for Android 14+ -->
+            <!-- Required for Android 14+ -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn"/>
@@ -83,7 +83,7 @@
                 <action android:name="android.net.VpnService"/>
             </intent-filter>
 
-            <!-- Always-on support -->
+            <!-- Always-on VPN support -->
             <meta-data
                 android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
                 android:value="true"/>
