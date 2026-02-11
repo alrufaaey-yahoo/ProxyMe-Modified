@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Intent
 import android.graphics.Color
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,8 +26,6 @@ class Tun2SocksVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
-
-        // tun2socks يتطلب بروكسي SOCKS5
         private const val PROXY = "http://127.0.0.1:2323"
 
         @Volatile
@@ -43,13 +42,11 @@ class Tun2SocksVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
-        // لو تم استدعاء STOP
         if (intent?.action == ACTION_STOP_SERVICE) {
             stopVpn()
             return START_NOT_STICKY
         }
 
-        // لو الـ VPN يعمل بالفعل
         if (RUNNING) {
             Log.d(TAG, "VPN already running")
             return START_STICKY
@@ -57,14 +54,13 @@ class Tun2SocksVpnService : VpnService() {
 
         startForeground(1, buildNotification())
 
-        // بدء الـ VPN في Thread منفصل
         vpnThread = Thread {
             try {
                 RUNNING = true
                 utils?.setVpnStatus(true)
                 startVpn()
             } catch (e: Exception) {
-                Log.e(TAG, "VPN encountered error", e)
+                Log.e(TAG, "VPN error", e)
                 RUNNING = false
             }
         }
@@ -74,7 +70,6 @@ class Tun2SocksVpnService : VpnService() {
     }
 
     private fun startVpn() {
-
         Log.d(TAG, "Starting VPN with proxy $PROXY")
 
         val builder = Builder()
@@ -83,11 +78,11 @@ class Tun2SocksVpnService : VpnService() {
             .addAddress("10.10.10.1", 32)
             .addRoute("0.0.0.0", 0)
 
-        // تمكين دعم التطبيقات المحددة فقط
+        // السماح فقط لتطبيقات Facebook
         try { builder.addAllowedApplication("com.facebook.katana") } catch (_: Exception) {}
         try { builder.addAllowedApplication("com.facebook.lite") } catch (_: Exception) {}
 
-        // منع عمل الخدمة على نفسها لتجنب Loop
+        // منع الخدمة من العمل على التطبيق نفسه لتفادي loop
         try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
         vpnInterface = builder.establish()
@@ -111,10 +106,8 @@ class Tun2SocksVpnService : VpnService() {
 
         Engine.insert(key)
         Engine.start()
-
         Log.d(TAG, "Engine started")
 
-        // الانتظار حتى يتم إيقاف الخدمة
         stopSignal.await()
 
         try { Engine.stop() } catch (_: Exception) {}
@@ -141,7 +134,7 @@ class Tun2SocksVpnService : VpnService() {
     }
 
     private fun createNotificationChannel() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "vpn",
                 "VPN Service",
@@ -154,14 +147,15 @@ class Tun2SocksVpnService : VpnService() {
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(
-            this, 0,
+            this,
+            0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(this, "vpn")
             .setContentTitle("ProxyMe VPN")
-            .setContentText("Running with proxy $PROXY")
+            .setContentText("VPN active for Facebook via $PROXY")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pi)
             .setOngoing(true)
