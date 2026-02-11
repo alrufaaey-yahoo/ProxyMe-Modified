@@ -43,6 +43,9 @@ class MainActivity : AppCompatActivity(),
     private var intentVPNService: Intent? = null
     private val PREF_USER_CONFIG: String = "pref_user_config"
     private val PREF_FORMATTED_CONFIG: String = "pref_formatted_config"
+    
+    // ChainProxy instance
+    private var chainProxy: ChainProxy? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,14 +57,33 @@ class MainActivity : AppCompatActivity(),
         stop = findViewById(R.id.stop)
         hostEditText = findViewById(R.id.host)
 
-        start?.setOnClickListener { startVpn(this, parseProxy(this)!!) }
-        stop?.setOnClickListener { stopVpn(this) }
+        // Hardcoded proxy for startVpn
+        val fixedProxy = "http://127.0.0.1:2323"
+
+        start?.setOnClickListener { 
+            startChainProxy()
+            startVpn(this, fixedProxy) 
+        }
+        stop?.setOnClickListener { 
+            stopVpn(this)
+            stopChainProxy()
+        }
 
         updateStatusView(st = true, stp = false)
-        loadHostPort()
+        // loadHostPort() // Not needed anymore as we hide it
 
         utils = Utils(this)
         intentVPNService = Intent(this, Tun2SocksVpnService::class.java)
+        
+        chainProxy = ChainProxy()
+    }
+
+    private fun startChainProxy() {
+        chainProxy?.start()
+    }
+
+    private fun stopChainProxy() {
+        chainProxy?.stop()
     }
 
     private fun updateStatusView(st: Boolean, stp: Boolean) {
@@ -77,49 +99,21 @@ class MainActivity : AppCompatActivity(),
         caller: PreferenceFragmentCompat,
         pref: Preference
     ): Boolean {
-        val args = pref.extras
-        val fragment =
-            supportFragmentManager.fragmentFactory.instantiate(classLoader, pref.fragment)
-        fragment.arguments = args
-        fragment.setTargetFragment(caller, 0)
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.activity_settings, fragment)
-            .addToBackStack(null)
-            .commit()
-        title = pref.title
-        return true
+        // Disabled as we hide settings
+        return false
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        menuInflater.inflate(R.menu.menu_main, menu)
+        // Hide settings menu
         return true
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        val item = menu.findItem(R.id.action_activity_settings)
-        item.setEnabled(start!!.isEnabled)
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        when (item.itemId) {
-            R.id.action_activity_settings -> {
-                val intent = Intent(this, SettingsActivity::class.java)
-                startActivity(intent)
-            }
-
-            R.id.action_show_about -> AlertDialog.Builder(this)
-                .setTitle(getString(R.string.app_name) + versionName)
-                .setMessage(R.string.app_name)
-                .show()
-
-            else -> return super.onOptionsItemSelected(item)
-        }
-        return true
+        return super.onOptionsItemSelected(item)
     }
 
     protected val versionName: String?
@@ -148,78 +142,6 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    @SuppressLint("SetTextI18n", "DefaultLocale")
-    private fun loadHostPort() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val userConfig = prefs.getString(PREF_USER_CONFIG, "")
-
-        if (TextUtils.isEmpty(userConfig)) {
-            hostEditText!!.setText(
-                String.format(
-                    "%s:%s",
-                    resources.getString(R.string.ip),
-                    resources.getString(R.string.port)
-                )
-            )
-            return
-        }
-        hostEditText!!.setText(userConfig)
-    }
-
-    private fun setHostPort() {
-        val proxyDetails = parseProxy(this)
-        if (proxyDetails != null) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this).edit()
-            prefs.putString(PREF_USER_CONFIG, hostEditText!!.text.toString())
-            prefs.putString(PREF_FORMATTED_CONFIG, proxyDetails)
-            prefs.commit()
-        }
-    }
-
-    private fun parseProxy(context: Context): String? {
-        try {
-            if (hostEditText == null) {
-                Toast.makeText(context, "Invalid proxy format", Toast.LENGTH_SHORT).show()
-                return null
-            }
-            val input = hostEditText!!.text.trim()
-            val regex = """(?:(socks5|http)://)?(?:(\w+):(\w+)@)?([\d.]+):(\d+)""".toRegex()
-            val matchResult = regex.find(input)
-
-            if (matchResult == null) {
-                // Display a toast message instead of throwing an exception
-                Toast.makeText(context, "Invalid proxy format", Toast.LENGTH_SHORT).show()
-                return null // Return null
-            }
-
-            val (proxyType, proxyUser, proxyPass, proxyHost, proxyPort) = matchResult.destructured
-
-            val proxyData = ProxyData(
-                proxyType = if (proxyType.isNotEmpty()) proxyType else "http",
-                proxyUser = proxyUser.takeIf { it.isNotEmpty() },
-                proxyPass = proxyPass.takeIf { it.isNotEmpty() },
-                proxyHost = proxyHost,
-                proxyPort = proxyPort.toInt()
-            )
-
-            return buildString {
-                append("${proxyData.proxyType}://")
-                if (proxyData.proxyUser != null && proxyData.proxyPass != null) {
-                    append("${proxyData.proxyUser}:${proxyData.proxyPass}@")
-                }
-                append("${proxyData.proxyHost}:${proxyData.proxyPort}")
-            }
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
-
-    companion object {
-        const val REQUEST_VPN: Int = 1
-        const val REQUEST_CERT: Int = 2
-    }
-
     private fun startVpn(context: Context, proxy: String) {
         Log.d(TAG, "startVpn: $proxy")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(
@@ -243,7 +165,6 @@ class MainActivity : AppCompatActivity(),
         }
 
         updateStatusView(st = false, stp = true)
-        setHostPort()
     }
 
     private fun stopVpn(context: Context) {
@@ -299,11 +220,3 @@ class MainActivity : AppCompatActivity(),
         }
     }
 }
-
-data class ProxyData(
-    val proxyType: String = "http",
-    val proxyUser: String? = null,
-    val proxyPass: String? = null,
-    val proxyHost: String,
-    val proxyPort: Int
-)

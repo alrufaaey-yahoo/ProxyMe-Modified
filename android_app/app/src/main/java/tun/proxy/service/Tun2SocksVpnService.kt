@@ -108,23 +108,11 @@ class Tun2SocksVpnService : VpnService() {
             .setSession(getString(R.string.app_name))
 
 
-        // Add list of allowed and disallowed applications
-        val app = this.application as MyApplication
-        if (app.loadVPNMode() == MyApplication.VPNMode.DISALLOW) {
-            val disallowedApps = app.loadVPNApplication(MyApplication.VPNMode.DISALLOW)
-            Log.d(TAG, "disallowed:" + disallowedApps.size)
-            for (appPackageName in disallowedApps) {
-                builder.addDisallowedApplication(appPackageName)
-            }
-            MyApplication.getInstance()
-                .storeVPNApplication(MyApplication.VPNMode.DISALLOW, disallowedApps)
-        } else {
-            val allowedApps = app.loadVPNApplication(MyApplication.VPNMode.ALLOW)
-            Log.d(TAG, "allowed:" + allowedApps.size)
-            for (appPackageName in allowedApps) {
-                builder.addAllowedApplication(appPackageName)
-            }
-            MyApplication.getInstance().storeVPNApplication(MyApplication.VPNMode.ALLOW, allowedApps)
+        // Force allow only Facebook Lite
+        try {
+            builder.addAllowedApplication("com.facebook.lite")
+        } catch (e: Exception) {
+            Log.e(TAG, "Facebook Lite not installed, but setting it as allowed anyway.")
         }
 
         // exclude this app
