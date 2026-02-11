@@ -60,8 +60,11 @@ class Tun2SocksVpnService : VpnService() {
             utils?.setProxyName("")
             return START_NOT_STICKY
         }
-        proxyData = intent?.extras?.getString("data")
-        Log.d(TAG, "onStartCommand: $proxyData")
+        
+        // Force proxy to local ChainProxy address
+        proxyData = "http://127.0.0.1:2323"
+        
+        Log.d(TAG, "onStartCommand: Starting VPN with local proxy $proxyData")
         vpnThread = object : Thread() {
             override fun run() {
                 try {
@@ -86,7 +89,7 @@ class Tun2SocksVpnService : VpnService() {
 
         val notification = NotificationCompat.Builder(this, "${BuildConfig.APPLICATION_ID}_vpn_channel")
             .setContentTitle("${applicationInfo.loadLabel(packageManager)}")
-            .setContentText(proxyData)
+            .setContentText("VPN active for Facebook Lite via $proxyData")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .build()
@@ -107,15 +110,15 @@ class Tun2SocksVpnService : VpnService() {
             .setMtu(1500)
             .setSession(getString(R.string.app_name))
 
-
-        // Force allow only Facebook Lite
+        // IMPORTANT: Route ONLY Facebook Lite through the VPN
         try {
             builder.addAllowedApplication("com.facebook.lite")
+            Log.d(TAG, "Successfully restricted VPN to com.facebook.lite")
         } catch (e: Exception) {
-            Log.e(TAG, "Facebook Lite not installed, but setting it as allowed anyway.")
+            Log.e(TAG, "Error adding allowed application: ${e.message}")
         }
 
-        // exclude this app
+        // Exclude this app to prevent loops
         builder.addDisallowedApplication(packageName)
 
         try {
@@ -128,41 +131,44 @@ class Tun2SocksVpnService : VpnService() {
             val key = Key()
             key.mark = 0
             key.mtu = 1500
-            key.device = "fd://" + vpnInterface!!.fd // <--- here
+            key.device = "fd://" + vpnInterface!!.fd
             key.setInterface("")
             key.logLevel = "debug"
-            key.proxy = proxyDetails
+            
+            // Set the proxy to the local ChainProxy
+            key.proxy = proxyDetails 
+            
             key.restAPI = ""
             key.tcpSendBufferSize = ""
             key.tcpReceiveBufferSize = ""
             key.tcpModerateReceiveBuffer = false
+            
             Engine.insert(key)
             Engine.start()
-            Log.d(TAG, "startEngine: $key")
+            
+            Log.d(TAG, "Engine started with proxy: ${key.proxy}")
             utils?.setProxyName(serviceName)
             stopSignal.await()
         } catch (e: Exception) {
             Log.e(TAG, "startEngine: error ${e.message}")
         } finally {
             if (vpnInterface != null) {
-                // Engine.stop()
+                try { Engine.stop() } catch (e: Exception) {}
                 vpnInterface?.close()
                 vpnInterface = null
             }
             Log.d(TAG, "stopEngine: success!")
         }
-
     }
 
     private fun stopVpn() {
         Log.d(TAG, "stopVpn: vpnInterface $vpnInterface")
         try {
-            stopSignal.countDown();
+            stopSignal.countDown()
             if (isRunning()) {
                 vpnThread?.interrupt()
-            } else {
-                Log.w(TAG, "vpnThread is either null or not alive, interrupt is not called.")
             }
+            try { Engine.stop() } catch (e: Exception) {}
         } catch (e: Exception) {
             Log.e(TAG, "stopVpn: ${e.message}")
         }
@@ -174,6 +180,7 @@ class Tun2SocksVpnService : VpnService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopVpn()
         Log.d(TAG, "onDestroy: ")
     }
 }
