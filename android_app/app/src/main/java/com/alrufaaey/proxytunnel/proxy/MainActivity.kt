@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.alrufaaey.proxytunnel.R
 import com.alrufaaey.proxytunnel.proxy.service.Tun2SocksVpnService
 import com.alrufaaey.proxytunnel.proxy.service.Tun2SocksVpnService.Companion.ACTION_STOP_SERVICE
 import com.alrufaaey.proxytunnel.utils.Utils

@@ -8,10 +8,10 @@ import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
 import android.util.Log
-import com.alrufaaey.proxytunnel.proxy.BuildConfig
+import com.alrufaaey.proxytunnel.BuildConfig
 
 class Utils(private val context: Context) {
-    private val TAG = "${BuildConfig.APPLICATION_ID}->${this.javaClass.simpleName} "
+    private val TAG = "AlrufaaeyVPN->${this.javaClass.simpleName} "
     val sharedPreferences = context.getSharedPreferences("vpnconfig", Context.MODE_PRIVATE)
 
     init {
@@ -47,4 +47,3 @@ class Utils(private val context: Context) {
         edit.commit()
     }
 }
-

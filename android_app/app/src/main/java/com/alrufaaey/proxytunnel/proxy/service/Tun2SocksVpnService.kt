@@ -11,9 +11,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import engine.Engine
 import engine.Key
-import com.alrufaaey.proxytunnel.proxy.BuildConfig
+import com.alrufaaey.proxytunnel.BuildConfig
+import com.alrufaaey.proxytunnel.R
 import com.alrufaaey.proxytunnel.proxy.MainActivity
-import com.alrufaaey.proxytunnel.proxy.R
 import com.alrufaaey.proxytunnel.utils.Utils
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,7 +28,7 @@ class Tun2SocksVpnService : VpnService() {
     private val isStopping = AtomicBoolean(false)
 
     companion object {
-        const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_VPN_SERVICE"
+        const val ACTION_STOP_SERVICE = "com.alrufaaey.proxytunnel.STOP_VPN_SERVICE"
         private const val PROXY = "http://127.0.0.1:2323"
         
         @Volatile
@@ -215,8 +215,8 @@ class Tun2SocksVpnService : VpnService() {
         )
 
         return NotificationCompat.Builder(this, "vpn")
-            .setContentTitle("ProxyMe VPN")
-            .setContentText("VPN active for Facebook via $PROXY")
+            .setContentTitle("الرفاعي VPN")
+            .setContentText("الاتصال آمن ومستقر عبر $PROXY")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pi)
             .setOngoing(true)
