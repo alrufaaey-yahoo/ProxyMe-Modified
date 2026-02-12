@@ -1,4 +1,4 @@
-package tun.proxy;
+package com.alrufaaey.proxytunnel.proxy;
 
 import android.content.Context;
 import android.content.DialogInterface;

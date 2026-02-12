@@ -1,4 +1,4 @@
-package tun.proxy
+package com.alrufaaey.proxytunnel.proxy
 
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.app.Activity
@@ -8,21 +8,25 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import tun.proxy.service.Tun2SocksVpnService
-import tun.proxy.service.Tun2SocksVpnService.Companion.ACTION_STOP_SERVICE
-import tun.utils.Utils
+import com.alrufaaey.proxytunnel.proxy.service.Tun2SocksVpnService
+import com.alrufaaey.proxytunnel.proxy.service.Tun2SocksVpnService.Companion.ACTION_STOP_SERVICE
+import com.alrufaaey.proxytunnel.utils.Utils
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var btnStartStop: Button
-    private lateinit var hostEditText: EditText
+    private lateinit var userEditText: EditText
+    private lateinit var passEditText: EditText
 
     private lateinit var utils: Utils
     private lateinit var intentVPNService: Intent
@@ -32,7 +36,6 @@ class MainActivity : AppCompatActivity() {
     private val VPN_REQUEST_CODE = 100
     private val REQUEST_NOTIFICATION_PERMISSION = 1231
 
-    // ✅ البروكسي المحلي socks5
     private val PROXY = "http://127.0.0.1:2323"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +46,8 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
 
         btnStartStop = findViewById(R.id.start)
-        hostEditText = findViewById(R.id.host)
+        userEditText = findViewById(R.id.proxy_username)
+        passEditText = findViewById(R.id.proxy_password)
 
         utils = Utils(this)
         intentVPNService = Intent(this, Tun2SocksVpnService::class.java)
@@ -61,14 +65,13 @@ class MainActivity : AppCompatActivity() {
         updateButton()
     }
 
-    // =========================
-    // START ALL
-    // =========================
-
     private fun startAll() {
         Log.d(TAG, "Starting Proxy + VPN")
 
         try {
+            val username = userEditText.text.toString()
+            val password = passEditText.text.toString()
+            chainProxy?.setCredentials(username, password)
             chainProxy?.start()
         } catch (e: Exception) {
             Log.e(TAG, "ChainProxy start error: ${e.message}")
@@ -76,10 +79,6 @@ class MainActivity : AppCompatActivity() {
 
         startVpn(PROXY)
     }
-
-    // =========================
-    // STOP ALL
-    // =========================
 
     private fun stopAll() {
         Log.d(TAG, "Stopping VPN + Proxy")
@@ -95,27 +94,20 @@ class MainActivity : AppCompatActivity() {
         updateButton()
     }
 
-    // =========================
-    // BUTTON UI
-    // =========================
-
     private fun updateButton() {
         val running = Tun2SocksVpnService.isRunning()
 
         if (running) {
-            btnStartStop.text = "STOP VPN + PROXY"
-            btnStartStop.setBackgroundColor(0xFFD32F2F.toInt())
+            btnStartStop.text = "إيقاف"
+            btnStartStop.setBackgroundResource(R.drawable.button_red)
         } else {
-            btnStartStop.text = "START VPN + PROXY"
-            btnStartStop.setBackgroundColor(0xFF388E3C.toInt())
+            btnStartStop.text = "تشغيل"
+            btnStartStop.setBackgroundResource(R.drawable.button_blue)
         }
 
-        hostEditText.isEnabled = !running
+        userEditText.isEnabled = !running
+        passEditText.isEnabled = !running
     }
-
-    // =========================
-    // VPN START
-    // =========================
 
     private fun startVpn(proxy: String) {
         Log.d(TAG, "startVpn: $proxy")
@@ -143,10 +135,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // =========================
-    // VPN STOP
-    // =========================
-
     private fun stopVpn() {
         try {
             val intent = Intent(this, Tun2SocksVpnService::class.java)
@@ -156,10 +144,6 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "stopVpn error: ${e.message}")
         }
     }
-
-    // =========================
-    // RESULT
-    // =========================
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -171,26 +155,27 @@ class MainActivity : AppCompatActivity() {
         updateButton()
     }
 
-    // =========================
-    // PERMISSIONS
-    // =========================
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
-            if (grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED
-            ) {
-                Toast.makeText(this, "Notification permission granted", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Notification permission required", Toast.LENGTH_SHORT).show()
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_about -> {
+                showAboutDialog()
+                true
             }
+            else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun showAboutDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("عن المطور")
+            .setMessage("تم التطوير بواسطة الرفاعي\nhttps://t.me/alrufaaey")
+            .setPositiveButton("إغلاق", null)
+            .show()
     }
 
     override fun onResume() {

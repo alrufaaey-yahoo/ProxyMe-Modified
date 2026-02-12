@@ -1,4 +1,4 @@
-package tun.proxy;
+package com.alrufaaey.proxytunnel.proxy;
 
 import java.io.*;
 import java.net.*;
@@ -7,6 +7,7 @@ import javax.net.ssl.*;
 import java.security.*;
 import java.util.*;
 import android.util.Log;
+import android.util.Base64;
 
 public class ChainProxy {
     private static final String TAG = "ChainProxy";
@@ -18,6 +19,9 @@ public class ChainProxy {
     
     private final String localHost = "127.0.0.1";
     private final int localPort = 2323;
+    
+    private String proxyUsername = "";
+    private String proxyPassword = "";
     
     // إعدادات الأداء
     private final int bufferSize = 131072;
@@ -32,6 +36,11 @@ public class ChainProxy {
     public ChainProxy() {
         initSSLContext();
         executor = Executors.newCachedThreadPool();
+    }
+
+    public void setCredentials(String username, String password) {
+        this.proxyUsername = username;
+        this.proxyPassword = password;
     }
     
     private void initSSLContext() {
@@ -51,7 +60,6 @@ public class ChainProxy {
                 }
             }, new SecureRandom());
             
-            // تعطيل التحقق من الشهادة
             HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
         } catch (Exception e) {
             Log.e(TAG, "SSL Init Error", e);
@@ -90,7 +98,6 @@ public class ChainProxy {
         } catch (IOException e) {
             Log.e(TAG, "Stop Error", e);
         }
-        // Note: executor.shutdown() might be too aggressive if we want to restart
     }
     
     private byte[] buildProxy1Headers(String targetHost, int targetPort) {
@@ -106,27 +113,34 @@ public class ChainProxy {
     
     private byte[] buildProxy2Headers(String targetHost, int targetPort) {
         String finalTarget = targetHost + ":" + targetPort;
-        return ("CONNECT " + finalTarget + " HTTP/1.1\r\n" +
-                "Host: " + finalTarget + "\r\n" +
-                "Proxy-Connection: keep-alive\r\n" +
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n\r\n").getBytes();
+        StringBuilder headers = new StringBuilder();
+        headers.append("CONNECT ").append(finalTarget).append(" HTTP/1.1\r\n");
+        headers.append("Host: ").append(finalTarget).append("\r\n");
+        headers.append("Proxy-Connection: keep-alive\r\n");
+        headers.append("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n");
+        
+        if (proxyUsername != null && !proxyUsername.isEmpty()) {
+            String auth = proxyUsername + ":" + (proxyPassword != null ? proxyPassword : "");
+            String encodedAuth = Base64.encodeToString(auth.getBytes(), Base64.NO_WRAP);
+            headers.append("Proxy-Authorization: Basic ").append(encodedAuth).append("\r\n");
+        }
+        
+        headers.append("\r\n");
+        return headers.toString().getBytes();
     }
     
     private SSLSocket establishSingleChain(String targetHost, int targetPort) {
         for (int attempt = 0; attempt < 10; attempt++) {
             try {
-                // الاتصال بالبروكسي الأول
                 Socket socket1 = new Socket();
                 socket1.setSoTimeout(15000);
                 socket1.setKeepAlive(true);
                 socket1.connect(new InetSocketAddress(proxy1Host, proxy1Port), 10000);
                 
-                // إرسال طلب CONNECT للبروكسي الثاني
                 OutputStream out1 = socket1.getOutputStream();
                 out1.write(buildProxy1Headers(targetHost, targetPort));
                 out1.flush();
                 
-                // قراءة الرد من البروكسي الأول
                 InputStream in1 = socket1.getInputStream();
                 ByteArrayOutputStream response1 = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1024];
@@ -146,18 +160,15 @@ public class ChainProxy {
                     continue;
                 }
                 
-                // إنشاء اتصال SSL مع البروكسي الثاني
                 SSLSocketFactory factory = sslContext.getSocketFactory();
                 SSLSocket sslSocket = (SSLSocket) factory.createSocket(
                     socket1, proxy2Host, proxy2Port, true);
                 sslSocket.startHandshake();
                 
-                // إرسال طلب CONNECT للهدف النهائي
                 OutputStream sslOut = sslSocket.getOutputStream();
                 sslOut.write(buildProxy2Headers(targetHost, targetPort));
                 sslOut.flush();
                 
-                // قراءة الرد من البروكسي الثاني
                 InputStream sslIn = sslSocket.getInputStream();
                 ByteArrayOutputStream response2 = new ByteArrayOutputStream();
                 responseStr = "";
@@ -201,7 +212,6 @@ public class ChainProxy {
             int bytesRead;
             String requestText = "";
             
-            // قراءة رأس الطلب
             while (!requestText.contains("\r\n\r\n")) {
                 bytesRead = clientIn.read(buffer);
                 if (bytesRead == -1) break;
@@ -228,22 +238,18 @@ public class ChainProxy {
             }
             
             if (isConnect) {
-                // طلبات HTTPS
                 OutputStream clientOut = clientSocket.getOutputStream();
                 clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
                 clientOut.flush();
                 relayTunnel(clientSocket, targetHost, targetPort);
             } else {
-                // طلبات HTTP
                 relayParallel(clientSocket, targetHost, targetPort, headerData.toByteArray());
             }
             
         } catch (Exception e) {
             try {
                 clientSocket.close();
-            } catch (IOException ie) {
-                // تجاهل خطأ الإغلاق
-            }
+            } catch (IOException ie) {}
         }
     }
     
@@ -286,64 +292,14 @@ public class ChainProxy {
     private void relayTunnel(Socket clientSocket, String targetHost, int targetPort) {
         SSLSocket remoteSocket = establishSingleChain(targetHost, targetPort);
         if (remoteSocket == null) {
-            try {
-                clientSocket.close();
-            } catch (IOException e) {
-                // تجاهل خطأ الإغلاق
-            }
+            try { clientSocket.close(); } catch (IOException e) {}
             return;
         }
         
-        try {
-            // خيط لنقل البيانات من العميل إلى الخادم البعيد
-            Thread clientToRemote = new Thread(() -> {
-                try {
-                    InputStream clientIn = clientSocket.getInputStream();
-                    OutputStream remoteOut = remoteSocket.getOutputStream();
-                    byte[] buffer = new byte[bufferSize];
-                    int bytesRead;
-                    
-                    while ((bytesRead = clientIn.read(buffer)) != -1) {
-                        remoteOut.write(buffer, 0, bytesRead);
-                        remoteOut.flush();
-                    }
-                } catch (Exception e) {
-                    // تم إغلاق الاتصال
-                } finally {
-                    try { remoteSocket.close(); } catch (Exception e) {}
-                    try { clientSocket.close(); } catch (Exception e) {}
-                }
-            });
-            
-            // خيط لنقل البيانات من الخادم البعيد إلى العميل
-            Thread remoteToClient = new Thread(() -> {
-                try {
-                    InputStream remoteIn = remoteSocket.getInputStream();
-                    OutputStream clientOut = clientSocket.getOutputStream();
-                    byte[] buffer = new byte[bufferSize];
-                    int bytesRead;
-                    
-                    while ((bytesRead = remoteIn.read(buffer)) != -1) {
-                        clientOut.write(buffer, 0, bytesRead);
-                        clientOut.flush();
-                    }
-                } catch (Exception e) {
-                    // تم إغلاق الاتصال
-                } finally {
-                    try { remoteSocket.close(); } catch (Exception e) {}
-                    try { clientSocket.close(); } catch (Exception e) {}
-                }
-            });
-            
-            clientToRemote.start();
-            remoteToClient.start();
-            
-        } catch (Exception e) {
-            try { remoteSocket.close(); } catch (Exception ex) {}
-            try { clientSocket.close(); } catch (Exception ex) {}
-        }
+        executor.execute(() -> pipe(clientSocket, remoteSocket));
+        executor.execute(() -> pipe(remoteSocket, clientSocket));
     }
-
+    
     private void relayParallel(Socket clientSocket, String targetHost, int targetPort, byte[] initialData) {
         SSLSocket remoteSocket = establishSingleChain(targetHost, targetPort);
         if (remoteSocket == null) {
@@ -356,10 +312,25 @@ public class ChainProxy {
             remoteOut.write(initialData);
             remoteOut.flush();
             
-            relayTunnel(clientSocket, targetHost, targetPort);
-        } catch (Exception e) {
-            try { remoteSocket.close(); } catch (Exception ex) {}
-            try { clientSocket.close(); } catch (Exception ex) {}
+            executor.execute(() -> pipe(clientSocket, remoteSocket));
+            executor.execute(() -> pipe(remoteSocket, clientSocket));
+        } catch (IOException e) {
+            try { clientSocket.close(); remoteSocket.close(); } catch (IOException ie) {}
+        }
+    }
+    
+    private void pipe(Socket src, Socket dst) {
+        try {
+            InputStream in = src.getInputStream();
+            OutputStream out = dst.getOutputStream();
+            byte[] buffer = new byte[bufferSize];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                out.write(buffer, 0, n);
+                out.flush();
+            }
+        } catch (IOException e) {} finally {
+            try { src.close(); dst.close(); } catch (IOException e) {}
         }
     }
 }

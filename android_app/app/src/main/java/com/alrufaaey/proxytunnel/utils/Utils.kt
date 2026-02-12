@@ -1,4 +1,4 @@
-package tun.utils
+package com.alrufaaey.proxytunnel.utils
 
 import android.content.Context
 import android.content.pm.ApplicationInfo.FLAG_SYSTEM
@@ -8,7 +8,7 @@ import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
 import android.util.Log
-import tun.proxy.BuildConfig
+import com.alrufaaey.proxytunnel.proxy.BuildConfig
 
 class Utils(private val context: Context) {
     private val TAG = "${BuildConfig.APPLICATION_ID}->${this.javaClass.simpleName} "

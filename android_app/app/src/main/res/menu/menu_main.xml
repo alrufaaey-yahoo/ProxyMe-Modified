@@ -2,29 +2,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:context="tun.proxy.MainActivity">
-    <!--
     <item
-        android:id="@+id/save_profile"
-        android:orderInCategory="99"
-        android:icon="@android:drawable/ic_menu_save"
-        android:title="@string/title_activity_settings"
-        app:showAsAction="always" />
-    <item
-        android:id="@+id/load_profile"
-        android:orderInCategory="99"
-        android:icon="@android:drawable/ic_menu_edit"
-        android:title="@string/title_activity_settings"
-        app:showAsAction="always" />
-    -->
-
+        android:id="@+id/action_about"
+        android:orderInCategory="100"
+        android:title="عن المطور"
+        app:showAsAction="never" />
     <item
         android:id="@+id/action_activity_settings"
-        android:orderInCategory="100"
+        android:orderInCategory="101"
         android:title="@string/title_activity_settings"
         app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_show_about"
-        android:orderInCategory="101"
-        android:title="@string/title_show_about"/>
 </menu>

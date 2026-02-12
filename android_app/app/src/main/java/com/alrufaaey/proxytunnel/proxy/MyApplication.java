@@ -1,4 +1,4 @@
-package tun.proxy;
+package com.alrufaaey.proxytunnel.proxy;
 
 import android.app.Application;
 import android.content.SharedPreferences;

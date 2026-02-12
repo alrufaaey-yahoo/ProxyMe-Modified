@@ -1,4 +1,4 @@
-package tun.proxy.service
+package com.alrufaaey.proxytunnel.proxy.service
 
 import android.app.*
 import android.content.Context
@@ -11,10 +11,10 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import engine.Engine
 import engine.Key
-import tun.proxy.BuildConfig
-import tun.proxy.MainActivity
-import tun.proxy.R
-import tun.utils.Utils
+import com.alrufaaey.proxytunnel.proxy.BuildConfig
+import com.alrufaaey.proxytunnel.proxy.MainActivity
+import com.alrufaaey.proxytunnel.proxy.R
+import com.alrufaaey.proxytunnel.utils.Utils
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
